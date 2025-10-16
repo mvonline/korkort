@@ -104,13 +104,14 @@ class TrafikverketBooking:
     
     def fill_booking_form(self, search_criteria):
         """
-        Fill the booking form with search criteria
+        Fill the booking form with search criteria.
+        Location can be a single string or a list of strings.
         
         Args:
             search_criteria (dict): Dictionary containing form fields
                 Example: {
                     'examination_type': 'Körprov',
-                    'location': 'Järfälla',
+                    'location': ['Järfälla', 'Sollentuna'],
                     'vehicle_type': 'Automatbil'
                 }
         """
@@ -123,71 +124,62 @@ class TrafikverketBooking:
                 exam_dropdown = self.wait.until(
                     EC.presence_of_element_located((By.ID, "examination-type-select"))
                 )
-                
-                # Scroll to element
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", exam_dropdown)
                 time.sleep(0.5)
-                
-                # Select the option directly using Select (for standard <select> elements)
                 from selenium.webdriver.support.ui import Select
                 select = Select(exam_dropdown)
                 select.select_by_visible_text(search_criteria['examination_type'])
                 time.sleep(0.5)
                 print(f"✓ Examination type set to: {search_criteria['examination_type']}")
             
-            # Fill location field (it's a button that opens a popup)
+            # Fill location field
             if 'location' in search_criteria:
-                print(f"Setting location to: {search_criteria['location']}")
+                locations = search_criteria['location']
+                if isinstance(locations, str):
+                    locations = [loc.strip() for loc in locations.split(',')]
+                
+                print(f"Setting locations to: {', '.join(locations)}")
                 
                 # Click the location button to open popup
-                location_button = self.wait.until(
-                    EC.element_to_be_clickable((By.ID, "select-location-search"))
-                )
-                
-                # Scroll to element
+                location_button = self.wait.until(EC.element_to_be_clickable((By.ID, "select-location-search")))
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", location_button)
                 time.sleep(0.5)
                 location_button.click()
                 time.sleep(0.5)
                 print("✓ Opened location popup")
                 
-                # Find the textbox in the popup and enter location
-                location_input = self.wait.until(
-                    EC.presence_of_element_located((By.ID, "location-search-input"))
-                )
-                location_input.clear()
-                location_input.send_keys(search_criteria['location'])
-                time.sleep(1.5)
-                print(f"✓ Entered '{search_criteria['location']}' in search box")
-                
-                # Find and click all buttons inside location-container
-                location_container = self.wait.until(
-                    EC.presence_of_element_located((By.ID, "location-container"))
-                )
-                
-                # Find all buttons within the container
-                location_buttons = location_container.find_elements(By.TAG_NAME, "button")
-                print(f"✓ Found {len(location_buttons)} location(s)")
-                
-                # Click all buttons
-                for idx, btn in enumerate(location_buttons):
-                    try:
-                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                        time.sleep(0.2)
-                        btn.click()
-                        print(f"✓ Clicked location button {idx + 1}")
-                    except Exception as e:
-                        print(f"Could not click button {idx + 1}: {e}")
-                
-                time.sleep(0.5)
-                
+                # Loop through each location and add it
+                for loc in locations:
+                    print(f"  - Adding location: {loc}")
+                    location_input = self.wait.until(EC.presence_of_element_located((By.ID, "location-search-input")))
+                    location_input.clear()
+                    location_input.send_keys(loc)
+                    time.sleep(1.5)
+                    print(f"    ✓ Entered '{loc}' in search box")
+                    
+                    location_container = self.wait.until(EC.presence_of_element_located((By.ID, "location-container")))
+                    location_buttons = location_container.find_elements(By.TAG_NAME, "button")
+                    
+                    if not location_buttons:
+                        print(f"    ⚠ No location found for '{loc}'. Skipping.")
+                        continue
+
+                    print(f"    ✓ Found {len(location_buttons)} match(es) for '{loc}'")
+                    for idx, btn in enumerate(location_buttons):
+                        try:
+                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                            time.sleep(0.2)
+                            btn.click()
+                            print(f"    ✓ Clicked location button {idx + 1}")
+                        except Exception as e:
+                            print(f"    Could not click button {idx + 1}: {e}")
+                    time.sleep(0.5)
+
                 # Click the Bekräfta (Confirm) button
-                confirm_button = self.wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Bekräfta')]"))
-                )
+                confirm_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Bekräfta')]" )))
                 confirm_button.click()
                 time.sleep(0.5)
-                print(f"✓ Location confirmed: {search_criteria['location']}")
+                print(f"✓ All locations confirmed: {', '.join(locations)}")
             
             # Fill vehicle type dropdown
             if 'vehicle_type' in search_criteria:
@@ -195,12 +187,8 @@ class TrafikverketBooking:
                 vehicle_dropdown = self.wait.until(
                     EC.presence_of_element_located((By.ID, "vehicle-select"))
                 )
-                
-                # Scroll to element
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", vehicle_dropdown)
                 time.sleep(0.5)
-                
-                # Select the option directly using Select
                 select = Select(vehicle_dropdown)
                 select.select_by_visible_text(search_criteria['vehicle_type'])
                 time.sleep(0.5)
@@ -219,15 +207,24 @@ class TrafikverketBooking:
     
     def check_for_available_times(self):
         """
-        Check if there are available times or if the 'no times available' message appears
+        Check if there are available times or if the 'no times available' message appears.
+        This is now more robust, waiting for either the success or failure message.
         
         Returns:
             bool: True if times are available, False if not
         """
-        time.sleep(1)
-        
         try:
-            # Check for the "no available times" message
+            # Wait up to 10 seconds for either the success state (slots) or failure state (no times message)
+            wait = WebDriverWait(self.driver, 10)
+            wait.until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Hittar inga lediga tider som matchar dina val')]")),
+                    EC.presence_of_element_located((By.CLASS_NAME, "appointment-slot"))
+                )
+            )
+            
+            # Now that we know one of the conditions is met, we check for the "no times" message.
+            # If it's not there, it means appointment slots were found.
             no_times_message = self.driver.find_elements(
                 By.XPATH, 
                 "//*[contains(text(), 'Hittar inga lediga tider som matchar dina val')]"
@@ -240,6 +237,10 @@ class TrafikverketBooking:
                 print("✓ Available times found!")
                 return True
                 
+        except TimeoutException:
+            # This can happen if the page returns neither a message nor slots (e.g., an empty results page)
+            print("⚠ Timed out waiting for search results. Assuming no times are available.")
+            return False
         except Exception as e:
             print(f"Error checking for available times: {e}")
             return False
@@ -260,21 +261,6 @@ class TrafikverketBooking:
             # Windows
             import winsound
             winsound.Beep(1000, 500)  # frequency, duration in ms
-        """Click the search button to find available appointments"""
-        print("Searching for appointments...")
-        
-        try:
-            # Look for search/submit button (adjust selector as needed)
-            search_button = self.wait.until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Sök') or contains(text(), 'Search')]"))
-            )
-            search_button.click()
-            time.sleep(3)
-            print("Search completed")
-            return True
-        except Exception as e:
-            print(f"Error searching: {e}")
-            return False
     
     def book_appointment(self, appointment_index=0):
         """
@@ -330,11 +316,21 @@ def main():
             print("Login failed")
             return
         
-        # Now you're on the booking page: https://fp.trafikverket.se/Boka/ng/search/xYihrXpXhCRiRl/5/0/0/0
+        # Now you're on the booking page
         print("\n" + "="*60)
         print("YOU ARE NOW ON THE BOOKING PAGE")
         print("="*60 + "\n")
         
+        # Define your search criteria here
+        search_criteria = {
+            'examination_type': 'Körprov',
+            'location': 'Uppsala,Uppland,Järfälla',  # Comma-separated locations
+            'vehicle_type': 'Automatbil'
+        }
+        
+        locations = [loc.strip() for loc in search_criteria['location'].split(',')]
+        print(f"Bot will search for appointments in the following locations: {', '.join(locations)}")
+
         # Loop until available times are found
         attempt = 1
         while True:
@@ -342,37 +338,33 @@ def main():
             print(f"ATTEMPT #{attempt}")
             print(f"{'='*60}\n")
             
-            # Step 2: Fill booking form with specified values
-            search_criteria = {
-                'examination_type': 'Körprov',
-                'location': 'Järfälla',
-                'vehicle_type': 'Automatbil'
-            }
-            
+            # Step 2: Fill the booking form. The form should auto-submit after the last field.
             print("Filling form fields...")
             if not bot.fill_booking_form(search_criteria):
-                print("Failed to fill form")
-                input("\nPress ENTER to close the browser...")
-                return
-            
-            # Step 3: Check for available times
+                print("Failed to fill form. Retrying after a refresh...")
+                time.sleep(5)
+                bot.navigate_to_booking_page()
+                continue
+
+            # Step 3: Check for available times. This will wait for the results to load.
             if bot.check_for_available_times():
                 # Times found! Play beep and stop
                 print("\n" + "🎉"*30)
                 print("AVAILABLE TIMES FOUND!")
+                print("Please check the browser to complete the booking.")
                 print("🎉"*30 + "\n")
                 
                 # Play system beep multiple times
-                for i in range(5):
+                for _ in range(10):
                     bot.play_beep()
-                    time.sleep(0.3)
+                    time.sleep(0.5)
                 
                 # Keep browser open for manual booking
                 input("\nPress ENTER to close the browser...")
                 break
             else:
-                # No times found, wait 1 minute and try again
-                print(f"\n⏳ Waiting 60 seconds before next attempt...")
+                # No times found, wait and try again
+                print(f"\n⏳ No times found. Waiting 60 seconds before next attempt...")
                 time.sleep(60)
                 attempt += 1
                 

@@ -65,10 +65,12 @@ Edit in `book_appointment.py`:
 ```python
 search_criteria = {
     'examination_type': 'Körprov',
-    'location': 'Järfälla',
+    'location': 'Järfälla,Sollentuna',
     'vehicle_type': 'Automatbil'
 }
 ```
+
+The `location` can be a single city or a comma-separated list of cities to search for appointments.
 
 ## How It Works
 

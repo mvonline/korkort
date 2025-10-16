@@ -324,7 +324,7 @@ def main():
         # Define your search criteria here
         search_criteria = {
             'examination_type': 'Körprov',
-            'location': 'Uppsala,Uppland,Järfälla',  # Comma-separated locations
+            'location': 'Uppsala,Uppland,Järfälla,Enköping',  # Comma-separated locations
             'vehicle_type': 'Automatbil'
         }
         
